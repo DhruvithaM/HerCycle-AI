@@ -1,11 +1,23 @@
+import { useEffect } from "react";
+import { useStore } from "react-redux";
+
+import AppRoutes from "./routes/AppRoutes";
+import { initializeProfileListener } from "./services/profileService";
+
 function App() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-pink-100">
-      <h1 className="text-5xl font-bold text-pink-600">
-        HerCycle AI ❤️
-      </h1>
-    </div>
-  );
+  const store = useStore();
+
+  useEffect(() => {
+    const unsubscribe = initializeProfileListener(store);
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [store]);
+
+  return <AppRoutes />;
 }
 
 export default App;
