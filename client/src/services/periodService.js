@@ -10,6 +10,7 @@ import {
   updateDoc,
   serverTimestamp,
   onSnapshot,
+  writeBatch,
 } from "firebase/firestore";
 
 import { db } from "../firebase/firebase";
@@ -40,89 +41,202 @@ async function getActivePeriod(uid) {
     }
 
     return snapshot.docs[0];
-
   } catch (error) {
-
     console.error(
       "Error getting active period:",
       error
     );
 
-    return null;
-
+    throw error;
   }
 }
 
 /* ==========================================================
-   Start New Period
+   Start / Update Period
+
+   This function now keeps:
+
+   users/{uid}.lastPeriodDate
+
+   and
+
+   users/{uid}/periodHistory/{periodId}.startDate
+
+   synchronized.
 ========================================================== */
 
 export async function startPeriod(
   uid,
   startDate
 ) {
+  if (!uid) {
+    throw new Error(
+      "User ID is required."
+    );
+  }
+
+  if (!startDate) {
+    throw new Error(
+      "Period start date is required."
+    );
+  }
 
   try {
+    const selectedDate =
+      startDate instanceof Date
+        ? new Date(startDate)
+        : new Date(startDate);
+
+    if (
+      Number.isNaN(
+        selectedDate.getTime()
+      )
+    ) {
+      throw new Error(
+        "Invalid period start date."
+      );
+    }
+
+    selectedDate.setHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    /* ========================================================
+       USER PROFILE REFERENCE
+    ======================================================== */
+
+    const userRef = doc(
+      db,
+      "users",
+      uid
+    );
+
+    /* ========================================================
+       PERIOD HISTORY
+    ======================================================== */
+
+    const historyRef = collection(
+      db,
+      "users",
+      uid,
+      "periodHistory"
+    );
+
+    /* ========================================================
+       CHECK ACTIVE PERIOD
+    ======================================================== */
 
     const activeDoc =
       await getActivePeriod(uid);
 
+    /* ========================================================
+       BATCH WRITE
+    ======================================================== */
+
+    const batch = writeBatch(db);
+
+    /* ========================================================
+       CASE 1:
+       There is already an active period.
+
+       We update that active period instead of creating
+       unnecessary duplicate records.
+
+       This is especially important when the user is
+       correcting the date from the Cycle Tracker.
+    ======================================================== */
+
     if (activeDoc) {
-
-      const previousEnd =
-        new Date(startDate);
-
-      previousEnd.setDate(
-        previousEnd.getDate() - 1
-      );
-
-      await updateDoc(
+      batch.update(
         activeDoc.ref,
         {
-          endDate: previousEnd,
-          updatedAt: serverTimestamp(),
-        }
-      );
-
-    }
-
-    const historyRef =
-      collection(
-        db,
-        "users",
-        uid,
-        "periodHistory"
-      );
-
-    const docRef =
-      await addDoc(
-        historyRef,
-        {
-          startDate,
-
-          endDate: null,
-
-          createdAt:
-            serverTimestamp(),
-
+          startDate: selectedDate,
           updatedAt:
             serverTimestamp(),
         }
       );
 
-    return docRef.id;
+      /* -----------------------------------------------
+         Keep profile synchronized
+      ------------------------------------------------ */
 
+      batch.update(
+        userRef,
+        {
+          lastPeriodDate:
+            selectedDate,
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
+
+      await batch.commit();
+
+      return {
+        id: activeDoc.id,
+        updated: true,
+      };
+    }
+
+    /* ========================================================
+       CASE 2:
+       No active period exists.
+
+       Create a new period.
+    ======================================================== */
+
+    const newPeriodRef =
+      doc(historyRef);
+
+    batch.set(
+      newPeriodRef,
+      {
+        startDate:
+          selectedDate,
+
+        endDate:
+          null,
+
+        createdAt:
+          serverTimestamp(),
+
+        updatedAt:
+          serverTimestamp(),
+      }
+    );
+
+    /* -----------------------------------------------
+       Keep profile synchronized
+    ------------------------------------------------ */
+
+    batch.update(
+      userRef,
+      {
+        lastPeriodDate:
+          selectedDate,
+
+        updatedAt:
+          serverTimestamp(),
+      }
+    );
+
+    await batch.commit();
+
+    return {
+      id: newPeriodRef.id,
+      created: true,
+    };
   } catch (error) {
-
     console.error(
-      "Error starting period:",
+      "Error starting/updating period:",
       error
     );
 
-    return null;
-
+    throw error;
   }
-
 }
 
 /* ==========================================================
@@ -134,8 +248,46 @@ export async function endPeriod(
   periodId,
   endDate
 ) {
+  if (!uid) {
+    throw new Error(
+      "User ID is required."
+    );
+  }
+
+  if (!periodId) {
+    throw new Error(
+      "Period ID is required."
+    );
+  }
+
+  if (!endDate) {
+    throw new Error(
+      "Period end date is required."
+    );
+  }
 
   try {
+    const selectedDate =
+      endDate instanceof Date
+        ? new Date(endDate)
+        : new Date(endDate);
+
+    if (
+      Number.isNaN(
+        selectedDate.getTime()
+      )
+    ) {
+      throw new Error(
+        "Invalid period end date."
+      );
+    }
+
+    selectedDate.setHours(
+      0,
+      0,
+      0,
+      0
+    );
 
     const periodRef = doc(
       db,
@@ -148,25 +300,23 @@ export async function endPeriod(
     await updateDoc(
       periodRef,
       {
-        endDate,
+        endDate:
+          selectedDate,
+
         updatedAt:
           serverTimestamp(),
       }
     );
 
     return true;
-
   } catch (error) {
-
     console.error(
       "Error ending period:",
       error
     );
 
-    return false;
-
+    throw error;
   }
-
 }
 
 /* ==========================================================
@@ -176,16 +326,13 @@ export async function endPeriod(
 export async function getLatestPeriod(
   uid
 ) {
-
   try {
-
-    const historyRef =
-      collection(
-        db,
-        "users",
-        uid,
-        "periodHistory"
-      );
+    const historyRef = collection(
+      db,
+      "users",
+      uid,
+      "periodHistory"
+    );
 
     const q = query(
       historyRef,
@@ -207,24 +354,17 @@ export async function getLatestPeriod(
       snapshot.docs[0];
 
     return {
-
       id: document.id,
-
       ...document.data(),
-
     };
-
   } catch (error) {
-
     console.error(
       "Error getting latest period:",
       error
     );
 
-    return null;
-
+    throw error;
   }
-
 }
 
 /* ==========================================================
@@ -234,16 +374,13 @@ export async function getLatestPeriod(
 export async function getPeriodHistory(
   uid
 ) {
-
   try {
-
-    const historyRef =
-      collection(
-        db,
-        "users",
-        uid,
-        "periodHistory"
-      );
+    const historyRef = collection(
+      db,
+      "users",
+      uid,
+      "periodHistory"
+    );
 
     const q = query(
       historyRef,
@@ -257,23 +394,19 @@ export async function getPeriodHistory(
       await getDocs(q);
 
     return snapshot.docs.map(
-      (doc) => ({
-        id: doc.id,
-        ...doc.data(),
+      (document) => ({
+        id: document.id,
+        ...document.data(),
       })
     );
-
   } catch (error) {
-
     console.error(
       "Error loading history:",
       error
     );
 
-    return [];
-
+    throw error;
   }
-
 }
 
 /* ==========================================================
@@ -284,14 +417,12 @@ export function subscribeToPeriodHistory(
   uid,
   callback
 ) {
-
-  const historyRef =
-    collection(
-      db,
-      "users",
-      uid,
-      "periodHistory"
-    );
+  const historyRef = collection(
+    db,
+    "users",
+    uid,
+    "periodHistory"
+  );
 
   const q = query(
     historyRef,
@@ -302,34 +433,25 @@ export function subscribeToPeriodHistory(
   );
 
   return onSnapshot(
-
     q,
-
     (snapshot) => {
-
       const history =
         snapshot.docs.map(
-          (doc) => ({
-            id: doc.id,
-            ...doc.data(),
+          (document) => ({
+            id: document.id,
+            ...document.data(),
           })
         );
 
       callback(history);
-
     },
-
     (error) => {
-
       console.error(
         "Realtime Period Error:",
         error
       );
 
       callback([]);
-
     }
-
   );
-
 }

@@ -1,4 +1,9 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 
 import { auth } from "../firebase/firebase";
 import useProfile from "./useProfile";
@@ -10,200 +15,369 @@ import {
   subscribeToPeriodHistory,
 } from "../services/periodService";
 
+/* ==========================================================
+   usePeriod
+   HerCycle AI - Period Management Hook
+========================================================== */
+
 function usePeriod() {
-  const [latestPeriod, setLatestPeriod] = useState(null);
-  const [periodHistory, setPeriodHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
+  /* ========================================================
+     STATE
+  ======================================================== */
+
+  const [latestPeriod, setLatestPeriod] =
+    useState(null);
+
+  const [periodHistory, setPeriodHistory] =
+    useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  /* ========================================================
+     AUTHENTICATED USER
+  ======================================================== */
 
   const user = auth.currentUser;
 
+  /* ========================================================
+     PROFILE
+  ======================================================== */
+
   const { profile } = useProfile();
+
+  /* ========================================================
+     INITIALIZATION GUARD
+  ======================================================== */
 
   const initialized = useRef(false);
 
   /* ==========================================================
-     Initialize First Period History
+     INITIALIZE FIRST PERIOD HISTORY
+
+     If Firestore has no period history but the user's
+     profile contains lastPeriodDate, create the first
+     period record automatically.
   ========================================================== */
 
   const initializePeriodHistory =
     useCallback(async () => {
+      if (!user || !profile) {
+        return;
+      }
 
-      if (!user || !profile) return;
-
-      if (initialized.current) return;
+      if (initialized.current) {
+        return;
+      }
 
       initialized.current = true;
 
       try {
-
         const history =
-          await getPeriodHistory(user.uid);
+          await getPeriodHistory(
+            user.uid
+          );
 
-        if (history.length > 0) return;
+        /* -----------------------------------------------
+           History already exists
+        ------------------------------------------------ */
 
-        if (!profile.lastPeriodDate) return;
+        if (history.length > 0) {
+          return;
+        }
+
+        /* -----------------------------------------------
+           No profile period date
+        ------------------------------------------------ */
+
+        if (!profile.lastPeriodDate) {
+          return;
+        }
+
+        /* -----------------------------------------------
+           Create initial period
+        ------------------------------------------------ */
 
         await startPeriod(
           user.uid,
-          new Date(profile.lastPeriodDate)
+          new Date(
+            profile.lastPeriodDate
+          )
         );
-
       } catch (error) {
-
         console.error(
-          "Error initializing history:",
+          "Error initializing period history:",
           error
         );
 
-      }
+        /*
+          We intentionally do not throw this error.
 
+          Initialization happens automatically when the
+          hook loads. A failure here should not crash the
+          entire Cycle Tracker page.
+        */
+      }
     }, [user, profile]);
 
   /* ==========================================================
-     Initialize Once
+     INITIALIZE ONCE
   ========================================================== */
 
   useEffect(() => {
-
     initializePeriodHistory();
-
   }, [initializePeriodHistory]);
 
   /* ==========================================================
-     Realtime Period Listener
+     REALTIME PERIOD HISTORY LISTENER
   ========================================================== */
 
   useEffect(() => {
-
     if (!user) {
-
+      setPeriodHistory([]);
+      setLatestPeriod(null);
       setLoading(false);
 
       return;
-
     }
 
     setLoading(true);
 
     const unsubscribe =
       subscribeToPeriodHistory(
-
         user.uid,
-
         (history) => {
+          /* ---------------------------------------------
+             Safety check
+          --------------------------------------------- */
 
-          setPeriodHistory(history);
+          const safeHistory =
+            Array.isArray(history)
+              ? history
+              : [];
 
-          if (history.length > 0) {
+          /* ---------------------------------------------
+             Update history
+          --------------------------------------------- */
 
-            const latest =
-              [...history].sort(
+          setPeriodHistory(
+            safeHistory
+          );
+
+          /* ---------------------------------------------
+             Find latest period
+          --------------------------------------------- */
+
+          if (
+            safeHistory.length > 0
+          ) {
+            const sortedHistory =
+              [...safeHistory].sort(
                 (a, b) => {
-
                   const first =
-                    typeof b.startDate?.toDate === "function"
+                    typeof b.startDate
+                      ?.toDate ===
+                    "function"
                       ? b.startDate.toDate()
-                      : new Date(b.startDate);
+                      : new Date(
+                          b.startDate
+                        );
 
                   const second =
-                    typeof a.startDate?.toDate === "function"
+                    typeof a.startDate
+                      ?.toDate ===
+                    "function"
                       ? a.startDate.toDate()
-                      : new Date(a.startDate);
+                      : new Date(
+                          a.startDate
+                        );
 
-                  return first - second;
-
+                  return (
+                    first - second
+                  );
                 }
-              )[0];
+              );
 
-            setLatestPeriod(latest);
-
+            setLatestPeriod(
+              sortedHistory[0]
+            );
           } else {
-
-            setLatestPeriod(null);
-
+            setLatestPeriod(
+              null
+            );
           }
 
           setLoading(false);
-
         }
-
       );
 
+    /* ---------------------------------------------
+       Cleanup listener
+    --------------------------------------------- */
+
     return () => {
-
-      unsubscribe();
-
+      if (
+        typeof unsubscribe ===
+        "function"
+      ) {
+        unsubscribe();
+      }
     };
-
   }, [user]);
 
   /* ==========================================================
-     Start New Period
+     START NEW PERIOD
+
+     Called by RecordPeriodModal.
   ========================================================== */
 
-  async function startNewPeriod(
-    date = new Date()
-  ) {
+  const startNewPeriod =
+    useCallback(
+      async (
+        date = new Date()
+      ) => {
+        if (!user) {
+          throw new Error(
+            "User is not authenticated."
+          );
+        }
 
-    if (!user) return;
+        try {
+          /* -------------------------------------------
+             Normalize date
+          ------------------------------------------- */
 
-    try {
+          const periodStartDate =
+            date instanceof Date
+              ? new Date(date)
+              : new Date(date);
 
-      await startPeriod(
-        user.uid,
-        date
-      );
+          periodStartDate.setHours(
+            0,
+            0,
+            0,
+            0
+          );
 
-      // No manual refresh.
-      // Realtime listener updates automatically.
+          /* -------------------------------------------
+             Save to Firestore
+          ------------------------------------------- */
 
-    } catch (error) {
+          await startPeriod(
+            user.uid,
+            periodStartDate
+          );
 
-      console.error(
-        "Error starting period:",
-        error
-      );
+          /*
+            DO NOT manually refresh history.
 
-    }
+            subscribeToPeriodHistory() will automatically
+            receive the updated Firestore data.
+          */
 
-  }
+          return true;
+        } catch (error) {
+          console.error(
+            "Error starting period:",
+            error
+          );
+
+          /*
+            IMPORTANT:
+            Re-throw the error so RecordPeriodModal
+            knows that Firebase failed.
+          */
+
+          throw error;
+        }
+      },
+      [user]
+    );
 
   /* ==========================================================
-     Finish Period
+     FINISH CURRENT PERIOD
+
+     Called by RecordPeriodModal.
   ========================================================== */
 
-  async function finishPeriod(
-    date = new Date()
-  ) {
+  const finishPeriod =
+    useCallback(
+      async (
+        date = new Date()
+      ) => {
+        if (!user) {
+          throw new Error(
+            "User is not authenticated."
+          );
+        }
 
-    if (!user || !latestPeriod) {
-      return;
-    }
+        if (!latestPeriod) {
+          throw new Error(
+            "No active period found."
+          );
+        }
 
-    try {
+        if (!latestPeriod.id) {
+          throw new Error(
+            "The active period does not have a valid ID."
+          );
+        }
 
-      await endPeriod(
-        user.uid,
-        latestPeriod.id,
-        date
-      );
+        try {
+          /* -------------------------------------------
+             Normalize date
+          ------------------------------------------- */
 
-      // No manual refresh.
-      // Realtime listener updates automatically.
+          const periodEndDate =
+            date instanceof Date
+              ? new Date(date)
+              : new Date(date);
 
-    } catch (error) {
+          periodEndDate.setHours(
+            0,
+            0,
+            0,
+            0
+          );
 
-      console.error(
-        "Error ending period:",
-        error
-      );
+          /* -------------------------------------------
+             Save end date to Firestore
+          ------------------------------------------- */
 
-    }
+          await endPeriod(
+            user.uid,
+            latestPeriod.id,
+            periodEndDate
+          );
 
-  }
+          /*
+            Realtime listener automatically updates
+            latestPeriod and periodHistory.
+          */
+
+          return true;
+        } catch (error) {
+          console.error(
+            "Error ending period:",
+            error
+          );
+
+          /*
+            Re-throw so the modal can display
+            the actual failure.
+          */
+
+          throw error;
+        }
+      },
+      [user, latestPeriod]
+    );
+
+  /* ==========================================================
+     RETURN
+  ========================================================== */
 
   return {
-
     latestPeriod,
 
     periodHistory,
@@ -213,9 +387,7 @@ function usePeriod() {
     startNewPeriod,
 
     finishPeriod,
-
   };
-
 }
 
 export default usePeriod;

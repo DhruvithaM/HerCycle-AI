@@ -3,9 +3,6 @@ import usePeriod from "../../hooks/usePeriod";
 
 import { predictCycle } from "../../utils/cyclePrediction";
 
-import Sidebar from "./components/layout/Sidebar";
-import Topbar from "./components/layout/Topbar";
-
 import WelcomeSection from "./components/sections/WelcomeSection";
 
 import CalendarCard from "./components/widgets/CalendarCard";
@@ -18,13 +15,13 @@ import PeriodCheckIn from "./components/widgets/PeriodCheckIn";
 
 function Dashboard() {
   /* ==========================================
-     User Profile
+     USER PROFILE
   ========================================== */
 
   const { profile } = useProfile();
 
   /* ==========================================
-     Period History
+     PERIOD HISTORY
   ========================================== */
 
   const {
@@ -34,7 +31,7 @@ function Dashboard() {
   } = usePeriod();
 
   /* ==========================================
-     Single Source Of Truth
+     CYCLE DATA
   ========================================== */
 
   const cycleData = predictCycle(
@@ -43,12 +40,12 @@ function Dashboard() {
   );
 
   /* ==========================================
-     Loading
+     LOADING
   ========================================== */
 
   if (periodLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FFF8FC]">
+      <div className="flex min-h-[70vh] items-center justify-center">
         <div className="text-center">
           <div
             className="
@@ -72,90 +69,70 @@ function Dashboard() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#FFF8FC]">
-      {/* Sidebar */}
+    <div className="w-full pb-10">
+      {/* ================= Welcome ================= */}
 
-      <Sidebar />
+      <WelcomeSection
+        profile={profile}
+        cycleData={cycleData}
+      />
 
-      {/* Main */}
+      {/* ================= Period Check-In ================= */}
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[1800px] px-8 py-6">
-          {/* Topbar */}
+      <div className="mt-6">
+        <PeriodCheckIn
+          cycleData={cycleData}
+          startNewPeriod={startNewPeriod}
+        />
+      </div>
 
-          <Topbar />
+      {/* ================= Second Row ================= */}
 
-          {/* Welcome */}
+      <div className="mt-8 grid grid-cols-12 items-stretch gap-6">
+        {/* Calendar */}
 
-          <div className="mt-8">
-            <WelcomeSection
-              profile={profile}
-              cycleData={cycleData}
-            />
-          </div>
-
-          {/* Period Check In */}
-
-          <div className="mt-6">
-            <PeriodCheckIn
-              cycleData={cycleData}
-              startNewPeriod={startNewPeriod}
-            />
-          </div>
-
-          {/* ==========================
-              Second Row
-          ========================== */}
-
-          <div className="mt-8 grid grid-cols-12 gap-6 items-stretch">
-            {/* Calendar */}
-
-            <div className="col-span-12 xl:col-span-6 flex">
-              <CalendarCard
-                cycleData={cycleData}
-              />
-            </div>
-
-            {/* Quick Actions */}
-
-            <div className="col-span-12 md:col-span-6 xl:col-span-3 flex">
-              <QuickActions />
-            </div>
-
-            {/* Reminder */}
-
-            <div className="col-span-12 md:col-span-6 xl:col-span-3 flex">
-              <ReminderCard
-                cycleData={cycleData}
-              />
-            </div>
-          </div>
-
-          {/* ==========================
-              Third Row
-          ========================== */}
-
-          <div className="mt-8 grid grid-cols-12 gap-6 items-stretch">
-            {/* Health Insights */}
-
-            <div className="col-span-12 xl:col-span-8 flex">
-              <HealthInsights
-                profile={profile}
-                cycleData={cycleData}
-              />
-            </div>
-
-            {/* Mood Tracker */}
-
-            <div className="col-span-12 xl:col-span-4 flex">
-              <MoodTracker
-                profile={profile}
-                cycleData={cycleData}
-              />
-            </div>
-          </div>
+        <div className="col-span-12 flex xl:col-span-6">
+          <CalendarCard
+            cycleData={cycleData}
+          />
         </div>
-      </main>
+
+        {/* Quick Actions */}
+
+        <div className="col-span-12 flex md:col-span-6 xl:col-span-3">
+          <QuickActions />
+        </div>
+
+        {/* Reminder */}
+
+        <div className="col-span-12 flex md:col-span-6 xl:col-span-3">
+          <ReminderCard
+            cycleData={cycleData}
+          />
+        </div>
+      </div>
+
+      {/* ================= Third Row ================= */}
+
+      <div className="mt-8 grid grid-cols-12 items-stretch gap-6">
+        {/* Health Insights */}
+
+        <div className="col-span-12 flex xl:col-span-8">
+          <HealthInsights
+            profile={profile}
+            cycleData={cycleData}
+          />
+        </div>
+
+        {/* Mood Tracker */}
+
+        <div className="col-span-12 flex xl:col-span-4">
+          <MoodTracker
+            profile={profile}
+            cycleData={cycleData}
+          />
+        </div>
+      </div>
     </div>
   );
 }
