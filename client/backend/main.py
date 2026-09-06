@@ -47,17 +47,21 @@ app = FastAPI(
 
 
 # ==========================================================
-# CORS
-# Allows React frontend to communicate with backend
+# CORS CONFIGURATION
+# Allows React/Vite frontend to communicate with backend
 # ==========================================================
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        # Local development
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
+
+        # Vercel production frontend
+        "https://her-cycle-ai.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
